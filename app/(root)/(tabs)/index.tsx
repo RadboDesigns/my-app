@@ -4,11 +4,10 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { icons } from "@/constants/icons";
 import image from "@/constants/images";
 import React, { useState, useRef, useEffect } from 'react';
-
 import { BACKEND_URL, API_CONFIG } from '@/config/DjangoConfig';
-import { Platform } from 'react-native';
 import AsyncStorage from "@react-native-async-storage/async-storage";
-
+import { useLocalSearchParams } from 'expo-router';
+import { format } from 'date-fns';
 
 interface PriceData {
   gold_price: number;
@@ -17,12 +16,12 @@ interface PriceData {
 }
 
 interface SchemeData {
-  scheme_name: string;
+  schemeCode: string;
   installment_months: number;
   scheme_type: string;
-  close_date: string;
+  joiningDate: string;
   total_savings: number;
-  remaining_months: number;
+  remainingPayments: number;
 }
 
 export default function Index() {
@@ -30,6 +29,7 @@ export default function Index() {
   const slideAnim = useRef(new Animated.Value(-300)).current;
   const [userSchemes, setUserSchemes] = useState<SchemeData[]>([]);
   const [loading, setLoading] = useState(true);
+  const { phone } = useLocalSearchParams();
 
   const [priceData, setPriceData] = useState<PriceData>({
     gold_price: 0,
@@ -39,11 +39,13 @@ export default function Index() {
 
   const fetchUserSchemes = async () => {
     try {
-      const phoneNumber = await AsyncStorage.getItem('userPhoneNumber');
-      console.log(phoneNumber)
-      if (phoneNumber) {
+      const userData = await AsyncStorage.getItem("userData");
+      if (userData) {
+        const { phoneNumber } = JSON.parse(userData);
+        console.log("Fetching schemes for phone number:", phoneNumber);
+
         const response = await fetch(
-          `${BACKEND_URL}/schemes/?phone=${encodeURIComponent(phoneNumber)}`,
+          `${BACKEND_URL}${API_CONFIG.ENDPOINTS.SCHEMESS}?phone=${encodeURIComponent(phoneNumber)}`,
           {
             method: 'GET',
             headers: {
@@ -53,12 +55,17 @@ export default function Index() {
         );
 
         const data = await response.json();
+        console.log("API response:", data);
+
         if (data.status === 'success') {
           setUserSchemes(data.data);
+        } else {
+          Alert.alert("Error", data.message || "Failed to fetch schemes");
         }
       }
     } catch (error) {
       console.error('Error fetching schemes:', error);
+      Alert.alert("Error", "An error occurred while fetching schemes");
     } finally {
       setLoading(false);
     }
@@ -77,14 +84,17 @@ export default function Index() {
           'Content-Type': 'application/json',
         },
       });
-  
+
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
-  
+
       const data = await response.json();
       setPriceData(data);
-      setLastUpdated(format(new Date(), "hh:mm a dd-MMM-yyyy"));
+
+      // Format the current date and time
+      const formattedDate = format(new Date(), "hh:mm a dd-MMM-yyyy");
+      setLastUpdated(formattedDate);
     } catch (error) {
       console.error('Error fetching prices:', error);
       Alert.alert(
@@ -106,28 +116,6 @@ export default function Index() {
     return `₹${price.toLocaleString('en-IN')}`;
   };
 
-  const progress = 0.5;
-
-  const handleMySchemePress = () => {
-    router.push("/(root)/[phone]/mySchemes");
-  };
-
-  const handleJoinSchemePress = () => {
-    router.push("/(root)/[phone]/joinSchemes");
-  };
-
-  const paymentPage = () => {
-    router.push("/(root)/(tabs)/payment");
-  };
-
-  const supportPage = () => {
-    router.push("/(root)/(tabs)/support");
-  };
-
-  const privacyPolicy = () => {
-    router.push("/(root)/[phone]/Privacy");
-  };
-
   const toggleMenu = () => {
     const toValue = isMenuOpen ? -300 : 0;
     Animated.timing(slideAnim, {
@@ -139,23 +127,23 @@ export default function Index() {
   };
 
   const renderScheme = (scheme: SchemeData) => (
-    <View key={scheme.scheme_name} className="mt-6 bg-white rounded-lg shadow-lg border border-gray-200 w-[371px] h-[320px]">
+    <View key={scheme.schemeCode} className="mt-6 bg-white rounded-lg shadow-lg border border-gray-200 w-[371px] h-[320px]">
       <View className="p-6">
         <Text className="text-xl font-rubik-medium text-center text-primary-100 mb-4">
-          {scheme.scheme_name}
+          {scheme.schemeCode}
         </Text>
 
         <View className="h-[1px] bg-gray-200 mb-4" />
 
         <Text className="text-lg font-rubik text-primary-100 mb-4">
-          Remaining months - {scheme.remaining_months}
+          Remaining months - {scheme.remainingPayments}
         </Text>
 
         <View className="h-2 bg-gray-200 rounded-full mb-2">
           <View
             className="h-full bg-primary-100 rounded-full"
-            style={{ 
-              width: `${((scheme.installment_months - scheme.remaining_months) / scheme.installment_months) * 100}%` 
+            style={{
+              width: `${((scheme.installment_months - scheme.remainingPayments) / scheme.installment_months) * 100}%`,
             }}
           />
         </View>
@@ -170,21 +158,21 @@ export default function Index() {
         <View className="flex-row justify-between items-center">
           <Text className="text-base font-rubik-semibold text-primary-100">Installment</Text>
           <Text className="text-base font-rubik text-gray-600">
-            {scheme.installment_months} Months
+            {scheme.remainingPayments} Months
           </Text>
         </View>
 
         <View className="flex-row justify-between items-center">
           <Text className="text-base font-rubik-semibold text-primary-100">Scheme Type</Text>
           <Text className="text-base font-rubik text-gray-600">
-            {scheme.scheme_type}
+            Gold
           </Text>
         </View>
 
         <View className="flex-row justify-between items-center">
-          <Text className="text-base font-rubik-semibold text-primary-100">Close Date</Text>
+          <Text className="text-base font-rubik-semibold text-primary-100">Joining Date</Text>
           <Text className="text-base font-rubik text-gray-600">
-            {scheme.close_date}
+            {scheme.joiningDate}
           </Text>
         </View>
 
@@ -207,14 +195,8 @@ export default function Index() {
     </View>
   );
 
-  const banners = [
-    { id: 1, image: image.banner1 },
-    { id: 2, image: image.banner1 },
-    { id: 3, image: image.banner1 },
-  ];
-
   return (
-    <SafeAreaView className="flex-1 bg-white">
+    <SafeAreaView className="flex-1 bg-white" edges={['top', 'bottom']}>
       {/* Side Navigation Menu */}
       <Animated.View
         style={{
@@ -256,7 +238,7 @@ export default function Index() {
             <Text className="text-white text-2xl font-rubik ml-6">Profile</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity className="flex-row items-center mb-4" onPress={handleJoinSchemePress}>
+          <TouchableOpacity className="flex-row items-center mb-4" onPress={() => router.push('/(root)/joinSchemes')}>
             <Image
               source={icons.JOin_Scheme}
               className="w-10 h-10"
@@ -266,7 +248,7 @@ export default function Index() {
             <Text className="text-white text-2xl font-rubik ml-6">Join Scheme</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity className="flex-row items-center mb-4" onPress={handleMySchemePress}>
+          <TouchableOpacity className="flex-row items-center mb-4" onPress={() => router.push('/(root)/mySchemes')}>
             <Image
               source={icons.My_Scheme}
               className="w-10 h-10"
@@ -276,7 +258,7 @@ export default function Index() {
             <Text className="text-white text-2xl font-rubik ml-6">My Scheme</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity className="flex-row items-center mb-4" onPress={paymentPage}>
+          <TouchableOpacity className="flex-row items-center mb-4" onPress={() => router.push('/(root)/(tabs)/payment')}>
             <Image
               source={icons.Paymen}
               className="w-10 h-10"
@@ -286,7 +268,7 @@ export default function Index() {
             <Text className="text-white text-2xl font-rubik ml-6">Payment</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity className="flex-row items-center mb-4" onPress={supportPage}>
+          <TouchableOpacity className="flex-row items-center mb-4" onPress={() => router.push('/(root)/(tabs)/support')}>
             <Image
               source={icons.Support_2}
               className="w-10 h-10"
@@ -296,7 +278,7 @@ export default function Index() {
             <Text className="text-white text-2xl font-rubik ml-6">Support</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity className="flex-row items-center mb-4" onPress={handleMySchemePress}>
+          <TouchableOpacity className="flex-row items-center mb-4" onPress={() => router.push('/(root)/(tabs)/payment')}>
             <Image
               source={icons.About}
               className="w-10 h-10"
@@ -306,7 +288,7 @@ export default function Index() {
             <Text className="text-white text-2xl font-rubik ml-6">About</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity className="flex-row items-center mb-4" onPress={privacyPolicy}>
+          <TouchableOpacity className="flex-row items-center mb-4" onPress={() => router.push('/(root)/(tabs)/support')}>
             <Image
               source={icons.Privacy}
               className="w-10 h-10"
@@ -316,7 +298,7 @@ export default function Index() {
             <Text className="text-white text-2xl font-rubik ml-6">Privacy</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity className="flex-row items-center mb-4" onPress={handleMySchemePress}>
+          <TouchableOpacity className="flex-row items-center mb-4" onPress={() => router.push('/sign-in')}>
             <Image
               source={icons.logout}
               className="w-10 h-10"
@@ -328,7 +310,7 @@ export default function Index() {
         </View>
       </Animated.View>
 
-      <ScrollView className="flex-1" showsVerticalScrollIndicator={false}>
+      <ScrollView className="flex-1" contentContainerStyle={{ paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
         {/* Main Content */}
         <View className="w-[412px] h-[245px] bg-primary-100">
           {/* Header Content Row */}
@@ -407,13 +389,13 @@ export default function Index() {
             pagingEnabled
             className="w-[371px] h-[203px]"
           >
-            {banners.map((banner) => (
+            {[image.banner1, image.banner1, image.banner1].map((banner, index) => (
               <View
-                key={banner.id}
+                key={index}
                 className="w-[371px] h-[203px] rounded-lg overflow-hidden mr-4"
               >
                 <Image
-                  source={banner.image}
+                  source={banner}
                   className="w-full h-full"
                   resizeMode="cover"
                 />
@@ -428,7 +410,7 @@ export default function Index() {
             {/* Left Icon Section */}
             <TouchableOpacity
               className="flex-1 items-center justify-center"
-              onPress={handleMySchemePress}
+              onPress={() => router.push('/(root)/mySchemes')}
             >
               <Image
                 source={icons.myScheme}
@@ -446,7 +428,7 @@ export default function Index() {
             {/* Right Icon Section */}
             <TouchableOpacity
               className="flex-1 items-center justify-center"
-              onPress={handleJoinSchemePress}
+              onPress={() => router.push('/(root)/joinSchemes')}
             >
               <Image
                 source={icons.joinScheme}
@@ -460,135 +442,22 @@ export default function Index() {
           </View>
         </View>
 
-        {/* Rest of the content remains the same */}
-        <View className="flex-1 items-center px-4 mt-6">
-          <Text className="font-bold text-3xl mb-10 font-rubik">
+        {/* Your Scheme Section */}
+        <View className="flex-1 items-center px-4 mt-10">
+          <Text className="font-bold text-3xl mb-8 font-rubik">
             Your Scheme
           </Text>
-          <View className="mt-6 bg-white rounded-lg shadow-lg border border-gray-200 w-[371px] h-[320px]">
-            <View className="p-6">
-              {/* Title */}
-              {loading ? (
-              <View className="flex-1 justify-center items-center">
-                <Text>Loading schemes...</Text>
-              </View>
-            ) : userSchemes.length > 0 ? (
-              userSchemes.map(scheme => renderScheme(scheme))
-            ) : (
-              <Text className="text-gray-500 text-center">
-                No active schemes found. Join a scheme to get started!
-              </Text>
-            )}
-              <Text className="text-xl font-rubik-medium text-center text-primary-100 mb-4">
-                PD2025 - RAJA
-              </Text>
-
-              {/* Divider Line */}
-              <View className="h-[1px] bg-gray-200 mb-4" />
-
-              {/* Remaining Months */}
-              <Text className="text-lg font-rubik text-primary-100 mb-4">
-                Remaining months - 6
-              </Text>
-
-              {/* Progress Bar */}
-              <View className="h-2 bg-gray-200 rounded-full mb-2">
-                <View
-                  className="h-full bg-primary-100 rounded-full"
-                  style={{ width: `${progress * 100}%` }}
-                />
-              </View>
-
-              {/* Scheme Details */}
-              <View className="flex-row justify-between items-center">
-                <Text className="text-base font-rubik-semibold text-primary-100">
-                  Scheme
-                </Text>
-                <Text className="text-base font-rubik text-gray-600">
-                  PONNUDURAI - MONTHLY
-                </Text>
-              </View>
-
-              <View className="flex-row justify-between items-center">
-                <Text className="text-base font-rubik-semibold text-primary-100">
-                  Installment
-                </Text>
-                <Text className="text-base font-rubik text-gray-600">
-                  12 Months
-                </Text>
-              </View>
-
-              <View className="flex-row justify-between items-center">
-                <Text className="text-base font-rubik-semibold text-primary-100">
-                  Scheme Type
-                </Text>
-                <Text className="text-base font-rubik text-gray-600">
-                  Gold
-                </Text>
-              </View>
-
-              <View className="flex-row justify-between items-center">
-                <Text className="text-base font-rubik-semibold text-primary-100">
-                  Close Date
-                </Text>
-                <Text className="text-base font-rubik text-gray-600">
-                  25-01-2025
-                </Text>
-              </View>
-
-              <View className="flex-row justify-between items-center">
-                <Text className="text-base font-rubik-semibold text-primary-100">
-                  Total Savings
-                </Text>
-                <Text className="text-base font-rubik text-gray-600">
-                  4.896 Grams
-                </Text>
-              </View>
-              <Link
-                href={"/"}
-                className="bg-primary-100 px-8 py-3 rounded-full mb-4 w-full mt-5"
-              >
-                <Text className="text-white text-center font-rubik-medium text-lg">
-                  Pay
-                </Text>
-                
-              </Link>
-              
+          {loading ? (
+            <View className="flex-1 justify-center items-center">
+              <Text>Loading schemes...</Text>
             </View>
-          </View>
-
-          {/* <Link
-            href={"/(root)/properties/sign-in"}
-            className="bg-primary-100 px-8 py-3 rounded-full mb-4 w-full mt-10"
-          >
-            <Text className="text-white text-center font-rubik-medium text-lg">
-              Sign In
+          ) : userSchemes.length > 0 ? (
+            userSchemes.map((scheme) => renderScheme(scheme))
+          ) : (
+            <Text className="text-gray-500 text-center">
+              No active schemes found. Join a scheme to get started!
             </Text>
-          </Link>
-
-          <Link
-            href={"/sign-up"}
-            className="bg-accent-100 px-8 py-3 rounded-full mb-4 w-full"
-          >
-            <Text className="text-white text-center font-rubik-medium text-lg">
-              Sign Up
-            </Text>
-          </Link> */}
-
-          <View className="mt-8">
-            <Link
-              href={"/(root)/(tabs)/newsFeeds"}
-              className="text-primary-100 font-rubik-medium mb-3"
-            >
-              News Feeds
-            </Link>
-            <Link
-              href={"/(root)/(tabs)/support"}
-              className="text-primary-100 font-rubik-medium"
-            >
-              Support
-            </Link>
-          </View>
+          )}
         </View>
       </ScrollView>
 

@@ -3,7 +3,8 @@ import React, { useState } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { icons } from "@/constants/icons";
 import { router } from "expo-router";
-import { BACKEND_URL } from '@/config/DjangoConfig';
+import { API_CONFIG, BACKEND_URL } from '@/config/DjangoConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 const Schemes = () => {
   const { type } = useLocalSearchParams();
@@ -32,17 +33,39 @@ const Schemes = () => {
       return;
     }
   
-    // Prepare data to send to the backend
+    let phoneNumber;
+    try {
+      const userData = await AsyncStorage.getItem("userData");
+      if (userData) {
+        const { phoneNumber: userPhone } = JSON.parse(userData);
+        // Convert to number if it's stored as a string
+        phoneNumber = typeof userPhone === 'string' ? parseInt(userPhone, 10) : userPhone;
+      } else {
+        Alert.alert('Error', 'User data not found. Please login again.');
+        return;
+      }
+    } catch (error) {
+      console.error('Error retrieving user data:', error);
+      Alert.alert('Error', 'Failed to retrieve user data');
+      return;
+    }
+
+    const typeValue = Array.isArray(type) ? type[0] : type || '';
+    const capitalizedType = typeValue.charAt(0).toUpperCase() + typeValue.slice(1).toLowerCase();
+  
+    // Prepare data to send to the backend - match exactly what worked in Postman
     const joinData = {
       Name: joinerName,
       payAmount: amountNumber,
-      chosenPackage: type, // Assuming `type` is passed from the previous screen
-      phone: '1234567890', // Replace with the actual user's phone number (from AsyncStorage or context)
+      chosenPackage: capitalizedType,
+      phone: phoneNumber, // This should be a number, not a string
     };
   
     try {
+      console.log('Sending data:', JSON.stringify(joinData));
+      
       // Send data to the backend
-      const response = await fetch(`${BACKEND_URL}/join_scheme/`, {
+      const response = await fetch(`${BACKEND_URL}${API_CONFIG.ENDPOINTS.JOINSCHEMESS}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -50,17 +73,31 @@ const Schemes = () => {
         body: JSON.stringify(joinData),
       });
   
+      // Log full response for debugging
+      const responseText = await response.text();
+      console.log('Response:', response.status, responseText);
+      
       if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.detail || 'Failed to join the scheme');
+        try {
+          const errorData = JSON.parse(responseText);
+          throw new Error(errorData.detail || 'Failed to join the scheme');
+        } catch (e) {
+          throw new Error('Failed to join the scheme. Server response: ' + responseText);
+        }
       }
   
-      const responseData = await response.json();
+      // Parse the response text since we've already read it
+      const responseData = responseText ? JSON.parse(responseText) : {};
       Alert.alert('Success', 'You have successfully joined the scheme!');
       router.replace('/(root)/(tabs)'); // Redirect to the index page
-    } catch (error: any) {
+    } catch (error: unknown) {
+      // Type guard to check if error is an Error object
+      const errorMessage = error instanceof Error 
+        ? error.message 
+        : 'An unknown error occurred';
+      
       console.error('Join Scheme Error:', error);
-      Alert.alert('Error', error.message || 'Failed to join the scheme. Please try again.');
+      Alert.alert('Error', errorMessage || 'Failed to join the scheme. Please try again.');
     }
   };
 

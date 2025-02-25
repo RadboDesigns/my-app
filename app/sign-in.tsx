@@ -1,45 +1,58 @@
-import React, { useState } from 'react';
+import React, { useState, useContext } from 'react';
 import { View, Text, TextInput, TouchableOpacity, Alert, Image, ScrollView } from 'react-native';
-import { useRouter } from 'expo-router';
+import { Link, useRouter } from 'expo-router';
 import { BACKEND_URL, API_CONFIG } from '@/config/DjangoConfig';
 import images from '@/constants/images';
+import { AuthContext } from './_layout';
 
 export default function SignIn() {
   const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { signIn } = useContext(AuthContext);
 
   const handleSignIn = async () => {
     if (!phone || !password) {
-      Alert.alert('Error', 'Please enter both username and password');
+      Alert.alert('Error', 'Please enter both phone number and password');
       return;
     }
 
     setLoading(true);
 
     try {
-      const response = await fetch(`${BACKEND_URL}${API_CONFIG.ENDPOINTS.USER}login/`, {
+      const response = await fetch(`${BACKEND_URL}${API_CONFIG.ENDPOINTS.LOGIN}`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          phone,
+          phone: phone,
           password,
         }),
       });
 
       const data = await response.json();
+      console.log('Login response:', response.status, data);
 
       if (!response.ok) {
-        throw new Error(data.detail || 'Login failed');
+        throw new Error(data.error || 'Login failed');
       }
 
-      // Save user data and token
-      await SignIn(data);
-      
-      // Router will automatically redirect to /(tabs) based on auth state change
+      if (data.exists) {
+        // Save user data and token
+        await signIn({
+          ...data,
+          phone: phone,
+        });
+
+        router.replace({
+          pathname: '/(root)/(tabs)',
+          params: { phone: phone },
+        });
+      } else {
+        throw new Error(data.error || 'User not found or invalid credentials');
+      }
     } catch (error) {
       const errorMessage = error instanceof Error ? error.message : 'An unknown error occurred';
       Alert.alert('Login Failed', errorMessage);
@@ -71,10 +84,10 @@ export default function SignIn() {
           <View className="flex-row items-center border border-gray-300 rounded-lg mb-4">
             <TextInput
               className="flex-1 p-4"
-              placeholder="Enter your email"
+              placeholder="Enter your phone number"
               value={phone}
               onChangeText={setPhone}
-              keyboardType="email-address"
+              keyboardType="phone-pad"
               autoCapitalize="none"
             />
           </View>
@@ -92,7 +105,7 @@ export default function SignIn() {
         </View>
 
         <TouchableOpacity
-          className="bg-green-500 rounded-lg p-4"
+          className="bg-green-500 rounded-lg p-4 mb-4"
           onPress={handleSignIn}
           disabled={loading}
         >
@@ -100,6 +113,18 @@ export default function SignIn() {
             {loading ? 'Processing...' : 'Login'}
           </Text>
         </TouchableOpacity>
+
+        {/* Using Link component instead of TouchableOpacity with router.push */}
+        <Link href="/sign-up" asChild>
+          <TouchableOpacity
+            className="bg-green-500 rounded-lg p-4"
+            disabled={loading}
+          >
+            <Text className="text-white text-center font-bold">
+              Don't have an account?
+            </Text>
+          </TouchableOpacity>
+        </Link>
       </View>
     </ScrollView>
   );
