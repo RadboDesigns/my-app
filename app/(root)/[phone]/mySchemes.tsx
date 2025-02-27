@@ -1,9 +1,10 @@
+import React, { useState, useEffect } from 'react';
 import { View, Text, SafeAreaView, ScrollView, TouchableOpacity, Image, Alert } from 'react-native';
 import { Link, router } from "expo-router";
-import React, { useState, useEffect } from 'react';
 import { icons } from "@/constants/icons";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { BACKEND_URL, API_CONFIG } from '@/config/DjangoConfig';
+import RazorpayCheckout from 'react-native-razorpay';
 
 interface SchemeData {
   schemeCode: string;
@@ -12,6 +13,7 @@ interface SchemeData {
   joiningDate: string;
   total_savings: number;
   remainingPayments: number;
+  payAmount: number; // Add payAmount to the interface
 }
 
 const MySchemes = () => {
@@ -59,6 +61,82 @@ const MySchemes = () => {
   useEffect(() => {
     fetchUserSchemes();
   }, []);
+
+  const handlePayment = async (scheme: SchemeData) => {
+    try {
+      // Create a Razorpay order
+      const orderResponse = await fetch(`${BACKEND_URL}/create-razorpay-order/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          schemeCode: scheme.schemeCode,
+          amount: scheme.payAmount * 100, // Convert to paise
+        }),
+      });
+
+      const orderData = await orderResponse.json();
+
+      if (orderData.status !== 'success') {
+        throw new Error(orderData.message || "Failed to create Razorpay order");
+      }
+
+      const options = {
+        description: 'Payment for Scheme',
+        image: 'https://your-logo-url.com/logo.png',
+        currency: 'INR',
+        key: 'rzp_test_6DPEFbutV2mNls', // Replace with your Razorpay key
+        amount: scheme.payAmount * 100, // Amount in paise
+        name: 'Ponnudurai Schemes',
+        order_id: orderData.order_id, // Use the order ID from the backend
+        prefill: {
+          email: 'user@example.com',
+          contact: '9999999999',
+          name: 'User Name',
+        },
+        theme: { color: '#F37254' },
+      };
+
+      // Open Razorpay checkout
+      RazorpayCheckout.open(options)
+        .then(async (data) => {
+          // Handle successful payment
+          console.log('Payment successful:', data);
+
+          // Save payment details to the backend
+          const paymentResponse = await fetch(`${BACKEND_URL}/handle-payment-success/`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+              razorpay_payment_id: data.razorpay_payment_id,
+              razorpay_order_id: data.razorpay_order_id,
+              schemeCode: scheme.schemeCode,
+              amount: scheme.payAmount,
+            }),
+          });
+
+          const paymentData = await paymentResponse.json();
+
+          if (paymentData.status === 'success') {
+            Alert.alert("Success", "Payment recorded successfully");
+            fetchUserSchemes(); // Refresh the schemes list
+          } else {
+            Alert.alert("Error", paymentData.message || "Failed to record payment");
+          }
+        })
+        .catch((error) => {
+          // Handle payment failure
+          console.error('Payment failed:', error);
+          Alert.alert("Error", "Payment failed or was canceled");
+        });
+    } catch (error) {
+      console.error('Error during payment:', error);
+      Alert.alert("Error", "An error occurred during payment");
+    }
+  };
 
   const renderScheme = (scheme: SchemeData) => (
     <View key={scheme.schemeCode} className="mt-6 bg-white rounded-lg shadow-lg border border-gray-200 w-[371px] h-[320px]">
@@ -119,7 +197,7 @@ const MySchemes = () => {
 
         <TouchableOpacity
           className="bg-primary-100 px-8 py-3 rounded-full mb-4 w-full mt-5"
-          onPress={() => router.push('/(root)/(tabs)/payment')}
+          onPress={() => handlePayment(scheme)}
         >
           <Text className="text-white text-center font-rubik-medium text-lg">
             Pay

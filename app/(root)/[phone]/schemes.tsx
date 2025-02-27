@@ -6,6 +6,7 @@ import { router } from "expo-router";
 import { API_CONFIG, BACKEND_URL } from '@/config/DjangoConfig';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
+
 const Schemes = () => {
   const { type } = useLocalSearchParams();
   const [joinerName, setJoinerName] = useState('');
